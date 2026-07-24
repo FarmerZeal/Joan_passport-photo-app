@@ -555,6 +555,7 @@ function triggerDownload(dataUrl, filename){
 }
 
 generateBtn.addEventListener('click', async () => {
+  showStatus("DEBUG: Click event started", false);
   if (!uploadedImg) { showStatus('ပထမ ပုံတင်ပေးပါ', true); return; }
 
   const wMm = parseFloat(photoW.value);

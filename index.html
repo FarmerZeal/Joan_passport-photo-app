@@ -252,6 +252,710 @@
   <div class="card">
     <h2>3. Photo size (mm)</h2>
     <div class="row">
+  <div class="field">
+    <label>Width</label>
+    <input type="number" id="photoW" value="35" step="0.5">
+  </div>
+
+  <div class="field">
+    <label>Height</label>
+    <input type="number" id="photoH" value="45" step="0.5">
+  </div>
+
+  <button id="ratioBtn" class="chip active" style="align-self:end;">
+    🔗
+  </button>
+</div>
+    <details>
+      <summary>Advanced (gap / margin / cut lines)</summary>
+      <div class="row">
+        <div class="field">
+          <label>Gap between photos (mm)</label>
+          <input type="number" id="gap" value="2" step="0.5">
+        </div>
+        <div class="field">
+          <label>Top-left margin (mm)</label>
+          <input type="number" id="margin" value="5" step="0.5">
+        </div>
+      </div>
+      <div class="toggle-row">
+        <span>Cut guide lines ပြရန်</span>
+        <input type="checkbox" id="guides" class="pxcheck" checked>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>4. Output ဖော်မတ် ရွေးပါ</h2>
+    <div class="chips">
+      <div class="chip format-chip active" data-format="pdf">PDF</div>
+      <div class="chip format-chip" data-format="jpg">JPG</div>
+      <div class="chip format-chip" data-format="jpeg">JPEG</div>
+    </div>
+    <div id="infoPanel">ပုံတင်ပြီး setting ရွေးလိုက်ရင် ဘယ်နှစ်ရွက် ထွက်မလဲ ဒီနေရာမှာ ပြပါမယ်</div>
+    <button class="primary" id="generateBtn" disabled>PDF ဖန်တီးပြီး Download ရယူရန်</button>
+    <div class="status" id="status"></div>
+    <p class="note">
+      Photo ကို ဖုန်း browser ပေါ်မှာပဲ တိုက်ရိုက် ပြုလုပ်တာမို့ ဘယ်သူ့ဆီမှ ပို့စရာ မလိုပါ။
+      Output က <b>source ပုံရဲ့ resolution အတိုင်း</b> (lossless) ထုတ်ပေးမှာမို့ quality ပျက်စရာ မရှိပါ။
+      ပုံတွေက စာရွက်ရဲ့ <b>ဘယ်ဘက်ထောင့်အပေါ်ဆုံး</b>ကနေ row အပြည့်ဖြည့်ပြီးမှ next row ဆင်းစီပေးထားလို့ paper waste နည်းပါတယ်။
+      ဖိုင်ထွက်ပြီးရင် Files/Downloads ထဲက ဖိုင်ကို ဖွင့် → Share → Print → <b>DCP-T520W</b> ရွေးပါ။
+      Media Type: <b>Glossy Paper</b>, Paper size: <b>A4</b>, Scale: <b>100% / Actual size</b> (Fit to page မဟုတ်ပါ) ထားပါ။
+    </p>
+  </div>
+
+  <div class="card" id="previewCard" style="display:none;">
+    <h2>Preview (ပထမရွက်)</h2>
+    <canvas id="previewCanvas"></canvas>
+  </div>
+
+</main>
+
+<script>
+const DPI = 300;
+const A4_W_MM = 210, A4_H_MM = 297;
+
+let uploadedImg = null;
+
+function mm2px(mm){ return Math.round(mm * DPI / 25.4); }
+
+function computeCoverCrop(img, dstAR){
+  const srcAR = img.width / img.height;
+  let sx, sy, sw, sh;
+  if (srcAR > dstAR) {
+    sh = img.height;
+    sw = sh * dstAR;
+    sx = (img.width - sw) / 2;
+    sy = 0;
+  } else {
+    sw = img.width;
+    sh = sw / dstAR;
+    sx = 0;
+    sy = (img.height - sh) / 2;
+  }
+  return { sx, sy, sw, sh };
+}
+function computeContainFit(img, dstW, dstH){
+  const scale = Math.min(
+    dstW / img.width,
+    dstH / img.height
+  );
+
+  const w = img.width * scale;
+  const h = img.height * scale;
+
+  const x = (dstW - w) / 2;
+  const y = (dstH - h) / 2;
+
+  return { x, y, w, h };
+}
+function createPassportPhotoCanvas(img, wMm, hMm){
+
+  const scaleFactor = 4;
+
+const wpx = mm2px(wMm) * scaleFactor;
+const hpx = mm2px(hMm) * scaleFactor;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = wpx;
+  canvas.height = hpx;
+
+  const ctx = canvas.getContext('2d');
+
+  // white passport background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, wpx, hpx);
+
+
+  // keep original ratio
+  const scale = Math.min(
+    wpx / img.width,
+    hpx / img.height
+  );
+
+  const drawW = img.width * scale;
+  const drawH = img.height * scale;
+
+  const x = (wpx - drawW) / 2;
+  const y = (hpx - drawH) / 2;
+
+
+  ctx.drawImage(
+    img,
+    x,
+    y,
+    drawW,
+    drawH
+  );
+
+
+  return canvas;
+}
+function computeMaxGrid(wMm, hMm, gapMm, marginMm){
+  const usableW = A4_W_MM - 2*marginMm;
+  const usableH = A4_H_MM - 2*marginMm;
+  const maxCols = Math.max(0, Math.floor((usableW + gapMm) / (wMm + gapMm)));
+  const maxRows = Math.max(0, Math.floor((usableH + gapMm) / (hMm + gapMm)));
+  return { maxCols, maxRows };
+}
+
+function planPages(n, maxCols, maxRows){
+  const perPage = maxCols * maxRows;
+  if (perPage <= 0) return [];
+  const pages = [];
+  let remaining = n;
+  while (remaining > 0) {
+    const take = Math.min(remaining, perPage);
+    const rows = Math.min(maxRows, Math.ceil(take / maxCols));
+    const grid = { cols: maxCols, rows: rows };
+    pages.push({ count: take, grid });
+    remaining -= take;
+  }
+  return pages;
+}
+
+function bakeImage(img, wMm, hMm){
+
+  const canvas = createPassportPhotoCanvas(
+    img,
+    wMm,
+    hMm
+  );
+
+  return canvas.toDataURL('image/png');
+}
+
+function updatePreview(){
+
+  if (!uploadedImg) return;
+
+  const wMm = parseFloat(photoW.value);
+  const hMm = parseFloat(photoH.value);
+  const gapMm = parseFloat(gapInput.value);
+  const marginMm = parseFloat(marginInput.value);
+  const showGuides = guidesToggle.checked;
+  const n = currentCount();
+
+  const { maxCols, maxRows } = computeMaxGrid(
+    wMm,
+    hMm,
+    gapMm,
+    marginMm
+  );
+
+  if (maxCols * maxRows <= 0) return;
+
+  const pages = planPages(
+    n,
+    maxCols,
+    maxRows
+  );
+
+  if (pages.length === 0) return;
+
+  drawPageToCanvas(
+    previewCanvas,
+    pages[0].grid,
+    wMm,
+    hMm,
+    gapMm,
+    marginMm,
+    uploadedImg,
+    showGuides,
+    pages[0].count
+  );
+
+  previewCard.style.display = 'block';
+}
+
+function drawPageToCanvas(canvasEl, grid, wMm, hMm, gapMm, marginMm, img, showGuides, count){
+  const pageWpx = mm2px(A4_W_MM), pageHpx = mm2px(A4_H_MM);
+  canvasEl.width = pageWpx; canvasEl.height = pageHpx;
+  const ctx = canvasEl.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, pageWpx, pageHpx);
+
+  const wpx = mm2px(wMm), hpx = mm2px(hMm), gappx = mm2px(gapMm);
+  const startX = mm2px(marginMm);
+  const startY = mm2px(marginMm);
+  let placed = 0;
+  for (let r=0; r<grid.rows && placed<count; r++){
+    for (let c=0; c<grid.cols && placed<count; c++){
+      const x = startX + c*(wpx+gappx);
+      const y = startY + r*(hpx+gappx);
+      const passportCanvas = createPassportPhotoCanvas(img, wMm, hMm);
+
+ctx.drawImage(
+  passportCanvas,
+  x,
+  y,
+  wpx,
+  hpx
+);
+      if (showGuides){
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, wpx, hpx);
+      }
+      placed++;
+    }
+  }
+}
+
+// ---- UI wiring ----
+const fileInput = document.getElementById('fileInput');
+const uploadZone = document.getElementById('uploadZone');
+const uploadInner = document.getElementById('uploadInner');
+const photoW = document.getElementById('photoW');
+const photoH = document.getElementById('photoH');
+const ratioBtn = document.getElementById('ratioBtn');
+const gapInput = document.getElementById('gap');
+const marginInput = document.getElementById('margin');
+const guidesToggle = document.getElementById('guides');
+const customCount = document.getElementById('customCount');
+const chips = document.querySelectorAll('.count-chip');
+const infoPanel = document.getElementById('infoPanel');
+const generateBtn = document.getElementById('generateBtn');
+const statusEl = document.getElementById('status');
+const previewCard = document.getElementById('previewCard');
+const previewCanvas = document.getElementById('previewCanvas');
+const fillMaxBtn = document.getElementById('fillMaxBtn');
+const formatChips = document.querySelectorAll('.format-chip');
+let selectedFormat = 'pdf';
+let lockRatio = true;
+let photoRatio = parseFloat(photoH.value) / parseFloat(photoW.value);
+function currentFormat(){ return selectedFormat; }
+ratioBtn.addEventListener('click', () => {
+  lockRatio = !lockRatio;
+
+  if (lockRatio) {
+    ratioBtn.classList.add('active');
+    ratioBtn.textContent = '🔗';
+  } else {
+    ratioBtn.classList.remove('active');
+    ratioBtn.textContent = '🔓';
+  }
+});
+
+function updateGenerateLabel(){
+  const labels = { pdf: 'PDF', jpg: 'JPG', jpeg: 'JPEG' };
+  generateBtn.textContent = labels[selectedFormat] + ' ဖန်တီးပြီး Download ရယူရန်';
+}
+
+formatChips.forEach(chip => {
+  chip.addEventListener('click', () => {
+    formatChips.forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    selectedFormat = chip.dataset.format;
+    updateGenerateLabel();
+  });
+});
+
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      uploadedImg = img;
+      uploadInner.innerHTML = '';
+      const preview = document.createElement('img');
+      preview.src = ev.target.result;
+      uploadInner.appendChild(preview);
+      const hint = document.createElement('div');
+      hint.className = 'hint';
+      hint.textContent = 'ပုံပြောင်းချင်ရင် ဒီနေရာကို ထပ်နှိပ်ပါ';
+      uploadInner.appendChild(hint);
+      uploadZone.classList.add('has-image');
+      updateInfoPanel();
+      updatePreview();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+chips.forEach(chip => {
+  chip.addEventListener('click', () => {
+    chips.forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    customCount.value = chip.dataset.count;
+    updateInfoPanel();
+    updatePreview();
+  });
+});
+
+customCount.addEventListener('input', () => {
+  chips.forEach(c => c.classList.remove('active'));
+
+  const match = [...chips].find(c => c.dataset.count === customCount.value);
+
+  if (match) match.classList.add('active');
+
+  updateInfoPanel();
+  updatePreview();
+});
+photoW.addEventListener('input', () => {
+
+  if (lockRatio) {
+    const newW = parseFloat(photoW.value);
+
+    if (!isNaN(newW)) {
+      photoH.value = (newW * photoRatio).toFixed(1);
+    }
+  }
+
+  updateInfoPanel();
+  updatePreview();
+});
+photoH.addEventListener('input', () => {
+
+  if (lockRatio) {
+    const newH = parseFloat(photoH.value);
+
+    if (!isNaN(newH)) {
+      photoW.value = (newH / photoRatio).toFixed(1);
+    }
+  }
+
+  updateInfoPanel();
+  updatePreview();
+});
+[photoW, photoH, gapInput, marginInput, guidesToggle].forEach(el => {
+  el.addEventListener('input', () => {
+    updateInfoPanel();
+    updatePreview();
+  });
+});
+
+fillMaxBtn.addEventListener('click', () => {
+  const wMm = parseFloat(photoW.value), hMm = parseFloat(photoH.value);
+  const gapMm = parseFloat(gapInput.value), marginMm = parseFloat(marginInput.value);
+  const { maxCols, maxRows } = computeMaxGrid(wMm, hMm, gapMm, marginMm);
+  const max = maxCols * maxRows;
+  if (max > 0) {
+  customCount.value = max;
+  chips.forEach(c => c.classList.remove('active'));
+  updateInfoPanel();
+  updatePreview();
+  }
+});
+
+function currentCount(){
+  const n = parseInt(customCount.value, 10);
+  return (isNaN(n) || n < 1) ? 0 : Math.min(n, 300);
+}
+
+function updateInfoPanel(){
+  const wMm = parseFloat(photoW.value) || 0;
+  const hMm = parseFloat(photoH.value) || 0;
+  const gapMm = parseFloat(gapInput.value) || 0;
+  const marginMm = parseFloat(marginInput.value) || 0;
+  const n = currentCount();
+
+  const { maxCols, maxRows } = computeMaxGrid(wMm, hMm, gapMm, marginMm);
+  const perPage = maxCols * maxRows;
+
+  if (perPage <= 0) {
+    infoPanel.innerHTML = '<span class="warn">ပုံအရွယ်အစား A4 စာရွက်အတွက် ကြီးနေပါတယ်</span>';
+    generateBtn.disabled = true;
+    return;
+  }
+
+  if (n <= 0) {
+    infoPanel.innerHTML = 'A4 တစ်ရွက်ကို အများဆုံး <b>' + perPage + ' ပုံ</b> ဝင်ပါတယ် (' + maxCols + ' × ' + maxRows + ')';
+    generateBtn.disabled = true;
+    return;
+  }
+
+  const pages = planPages(n, maxCols, maxRows);
+  let html = 'A4 တစ်ရွက်ကို အများဆုံး <b>' + perPage + ' ပုံ</b> ဝင်ပါတယ်<br>';
+  html += '<b>' + n + ' ပုံ</b> → <b>' + pages.length + ' ရွက်</b>';
+  if (pages.length > 1) {
+    html += ' (' + pages.map(p => p.count + ' ပုံ').join(' + ') + ')';
+  }
+  infoPanel.innerHTML = html;
+  generateBtn.disabled = !uploadedImg;
+}
+
+function showStatus(msg, isError){
+  statusEl.textContent = msg;
+  statusEl.className = isError ? 'status err' : 'status ok';
+  statusEl.style.display = 'block';
+}
+
+function sleep(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
+
+function triggerDownloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.display = 'none';
+
+  document.body.appendChild(a);
+  a.click();
+
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+    a.remove();
+  }, 10000);
+}
+
+generateBtn.addEventListener('click', async () => {
+  if (!uploadedImg) { showStatus('ပထမ ပုံတင်ပေးပါ', true); return; }
+  const timestamp = Date.now();
+  const wMm = parseFloat(photoW.value);
+  const hMm = parseFloat(photoH.value);
+  const gapMm = parseFloat(gapInput.value);
+  const marginMm = parseFloat(marginInput.value);
+  const showGuides = guidesToggle.checked;
+  const n = currentCount();
+  const format = currentFormat();
+  const { maxCols, maxRows } = computeMaxGrid(wMm, hMm, gapMm, marginMm);
+  if (maxCols*maxRows <= 0 || n <= 0) { showStatus('Setting များ စစ်ဆေးပါ', true); return; }
+
+  const pages = planPages(n, maxCols, maxRows);
+  console.log("Before preview");
+  drawPageToCanvas(previewCanvas, pages[0].grid, wMm, hMm, gapMm, marginMm, uploadedImg, showGuides, pages[0].count);
+  console.log("After preview");
+  previewCard.style.display = 'block';
+
+  showStatus(format.toUpperCase() + ' ပြင်နေပါတယ်...', false);
+  generateBtn.disabled = true;
+
+  try {
+    if (format === 'pdf') {
+      if (!window.jspdf) throw new Error('jsPDF not loaded');
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const baked = bakeImage(uploadedImg, wMm, hMm); // lossless PNG, full source quality
+
+      pages.forEach((page, idx) => {
+        if (idx > 0) doc.addPage();
+        const startXmm = marginMm;
+        const startYmm = marginMm;
+
+        let placed = 0;
+        for (let r=0; r<page.grid.rows && placed<page.count; r++){
+          for (let c=0; c<page.grid.cols && placed<page.count; c++){
+            const x = startXmm + c*(wMm+gapMm);
+            const y = startYmm + r*(hMm+gapMm);
+            doc.addImage(baked, 'PNG', x, y, wMm, hMm);
+            if (showGuides){
+              doc.setDrawColor(160);
+              doc.setLineWidth(0.1);
+              doc.rect(x, y, wMm, hMm);
+            }
+            placed++;
+          }
+        }
+      });
+
+      const pdfBlob = doc.output('blob');
+      const pdfName = 
+     `passport-photos-A4-${timestamp}.pdf`;
+
+      triggerDownloadBlob(pdfBlob, pdfName);
+
+      showStatus('PDF ဒေါင်းလုဒ်ပြီးပါပြီ ✓  (' + pages.length + ' ရွက်, ' + n + ' ပုံ)', false);
+
+    } else {
+      // JPG / JPEG — one image file per A4 sheet, max JPEG quality
+      const ext = format;
+      for (let i=0; i<pages.length; i++){
+        const cv = (i === 0) ? previewCanvas : document.createElement('canvas');
+        drawPageToCanvas(cv, pages[i].grid, wMm, hMm, gapMm, marginMm, uploadedImg, showGuides, pages[i].count);
+        const filename = pages.length > 1
+  ? `passport-photos-A4-page${i + 1}-${timestamp}.${ext}`
+  : `passport-photos-A4-${timestamp}.${ext}`;
+
+        const blob = await new Promise(resolve =>
+  cv.toBlob(resolve, 'image/jpeg', 1.0)
+);
+
+        if (!blob) {
+  throw new Error("Failed to create image blob");
+}
+        triggerDownloadBlob(blob, filename);
+        if (i < pages.length-1) await sleep(400);
+      }
+      showStatus(ext.toUpperCase() + ' ဒေါင်းလုဒ်ပြီးပါပြီ ✓  (' + pages.length + ' ဖိုင်, ' + n + ' ပုံ)', false);
+    }
+} catch (err) {
+    showStatus("PDF ဖန်တီးရာတွင် အမှားဖြစ်နေပါတယ်", true);
+    console.error(err);
+} finally {
+    generateBtn.disabled = false;
+  }
+});
+
+updateGenerateLabel();
+
+updateInfoPanel();
+
+</script>
+<script>
+// if ('serviceWorker' in navigator) {
+//   window.addEventListener('load', () => {
+//     navigator.serviceWorker.register('./service-worker.js');
+//   });
+// }
+</script>
+</body>
+</html>
+    border-left:2px solid var(--white);
+    border-right:2px solid var(--g4);
+    border-bottom:2px solid var(--g4);
+    cursor:pointer; user-select:none;
+  }
+  .chip:active{
+    border-top:2px solid var(--g4);
+    border-left:2px solid var(--g4);
+    border-right:2px solid var(--white);
+    border-bottom:2px solid var(--white);
+  }
+  .chip.active{
+    background:var(--black); color:var(--white);
+    border-top:2px solid var(--g4);
+    border-left:2px solid var(--g4);
+    border-right:2px solid var(--white);
+    border-bottom:2px solid var(--white);
+  }
+
+  .custom-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .custom-row label{ font-size:12px; color:var(--g4); }
+  .custom-row input{ width:76px; }
+
+  .link-btn{
+    background:var(--g1); border:2px solid var(--black);
+    color:var(--black); font-size:12px; font-weight:700;
+    text-transform:uppercase; letter-spacing:0.3px;
+    padding:8px 10px; cursor:pointer; width:100%;
+  }
+  .link-btn:active{ background:var(--black); color:var(--white); }
+
+  details{ margin-top:4px; }
+  details summary{
+    font-size:12px; font-weight:700; text-transform:uppercase;
+    letter-spacing:0.4px; cursor:pointer; margin-bottom:10px;
+    list-style:none;
+  }
+  details summary::before{ content:"▸ "; }
+  details[open] summary::before{ content:"▾ "; }
+
+  .toggle-row{ display:flex; align-items:center; justify-content:space-between; padding:6px 0; }
+  .toggle-row span{ font-size:13px; }
+  .pxcheck{
+    appearance:none; -webkit-appearance:none;
+    width:22px; height:22px; background:var(--white);
+    border-top:2px solid var(--g4);
+    border-left:2px solid var(--g4);
+    border-right:2px solid var(--white);
+    border-bottom:2px solid var(--white);
+    cursor:pointer; position:relative; flex:none;
+  }
+  .pxcheck:checked{ background:var(--black); }
+  .pxcheck:checked::after{
+    content:"✓"; color:var(--white); position:absolute;
+    top:50%; left:50%; transform:translate(-50%,-58%);
+    font-size:15px; font-weight:700;
+  }
+
+  #infoPanel{
+    font-size:13px; line-height:1.7;
+    background:var(--g1);
+    border-top:2px solid var(--g4);
+    border-left:2px solid var(--g4);
+    border-right:2px solid var(--white);
+    border-bottom:2px solid var(--white);
+    padding:10px 12px; margin-bottom:12px;
+  }
+  #infoPanel .warn{ background:var(--black); color:var(--white); padding:2px 6px; font-weight:700; }
+
+  button.primary{
+    width:100%; padding:15px; font-size:15px; font-weight:700;
+    text-transform:uppercase; letter-spacing:0.5px;
+    background:var(--g2); color:var(--black);
+    border-top:3px solid var(--white);
+    border-left:3px solid var(--white);
+    border-right:3px solid var(--g4);
+    border-bottom:3px solid var(--g4);
+    font-family:inherit;
+  }
+  button.primary:active:not(:disabled){
+    border-top:3px solid var(--g4);
+    border-left:3px solid var(--g4);
+    border-right:3px solid var(--white);
+    border-bottom:3px solid var(--white);
+  }
+  button.primary:disabled{
+    background:var(--g2); color:var(--g3);
+    border:3px solid var(--g3);
+  }
+
+  .status{
+    margin-top:10px; font-size:13px; padding:10px 12px;
+    display:none; font-weight:700; border:2px solid var(--black);
+  }
+  .status.ok{ background:var(--g1); color:var(--black); display:block; }
+  .status.err{ background:var(--black); color:var(--white); display:block; }
+
+  canvas{
+    width:100%; height:auto; display:block; background:#fff;
+    border:2px solid var(--black);
+  }
+  .note{
+    font-size:12px; color:var(--g4); line-height:1.6; margin-top:10px;
+  }
+  .note b{ color:var(--black); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="winbar"><span></span><span></span><span></span></div>
+  <h1>Passport Photo :: PDF</h1>
+  <p>ပုံတင်ပြီး copy အရေအတွက်ရွေးရုံနဲ့ A4 print-ready PDF ရပါမယ်</p>
+</header>
+
+<main>
+
+  <div class="card">
+    <h2>1. Photo တင်ပါ</h2>
+    <label class="upload-zone" id="uploadZone">
+      <div id="uploadInner">
+        <div style="font-size:30px;"><span class="icon-mono">📷</span></div>
+        <div class="hint">ပြင်ပြီးသား passport photo ကို ရွေးပါ</div>
+      </div>
+      <input type="file" id="fileInput" accept="image/*">
+    </label>
+  </div>
+
+  <div class="card">
+    <h2>2. ဘယ်နှစ်ပုံ လိုချင်လဲ</h2>
+    <div class="chips">
+      <div class="chip count-chip" data-count="4">4</div>
+      <div class="chip count-chip active" data-count="6">6</div>
+      <div class="chip count-chip" data-count="8">8</div>
+      <div class="chip count-chip" data-count="9">9</div>
+      <div class="chip count-chip" data-count="10">10</div>
+      <div class="chip count-chip" data-count="12">12</div>
+    </div>
+    <div class="custom-row">
+      <label for="customCount">ကိုယ်တိုင်ရိုက်ထည့်ရန်:</label>
+      <input type="number" id="customCount" value="6" min="1" max="300">
+    </div>
+    <button class="link-btn" id="fillMaxBtn">▤ A4 တစ်ရွက်ကို အများဆုံးဖြည့်ရန်</button>
+  </div>
+
+  <div class="card">
+    <h2>3. Photo size (mm)</h2>
+    <div class="row">
       <div class="field">
         <label>Width</label>
         <input type="number" id="photoW" value="35" step="0.5">

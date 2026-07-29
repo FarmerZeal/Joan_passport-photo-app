@@ -46,3 +46,5 @@
 - Auto Layout
 
 - Preview
+
+- Documentation Standard v1.0

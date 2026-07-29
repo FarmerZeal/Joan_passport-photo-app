@@ -24,3 +24,7 @@ All notable changes to this project will be documented here.
 - file:// compatibility issue
 - Offline cache issue
 - App icon issue
+
+### Changed
+
+- Established Documentation Standard v1.0

@@ -381,6 +381,52 @@ Maintain backward compatibility whenever possible.
 
 ---
 
+## Milestone — Documentation v1.0 (2026-07-29)
+
+Project documentation has been officially standardized.
+
+Official documentation files:
+
+- README.md
+- PROJECT_MEMORY.md
+- CHANGELOG.md
+- TODO.md
+
+Documentation responsibilities:
+
+README.md
+- User / visitor introduction
+- Project overview
+- Installation
+- Basic usage
+
+PROJECT_MEMORY.md
+- Official project memory
+- Architecture
+- Permanent decisions
+- Milestones
+- Development principles
+
+CHANGELOG.md
+- Version history
+- Added
+- Changed
+- Fixed
+- Removed
+
+TODO.md
+- Current priorities
+- Upcoming work
+- Release blockers
+
+Project Rule:
+
+Documentation must remain synchronized with the project.
+
+No major milestone is considered complete until these documents are updated when applicable.
+
+___
+
 # Developer Motto
 
 Finish one product before rebuilding it.

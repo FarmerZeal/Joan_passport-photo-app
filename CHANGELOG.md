@@ -1,11 +1,12 @@
 # CHANGELOG
 
+All notable changes to this project will be documented here.
+
+---
+
 ## v1.0 Beta
 
-Initial public beta release.
-
 ### Added
-
 - Passport Photo Generator
 - PDF Export
 - JPG Export
@@ -15,14 +16,10 @@ Initial public beta release.
 - Custom Size
 - Preview Canvas
 - Cut Guides
-- Offline Mode
 - PWA Support
 - Home Screen Installation
-- GitHub Pages Deployment
-- Custom App Icon
 
 ### Fixed
-
 - jsPDF loading issue
 - file:// compatibility issue
 - Offline cache issue
